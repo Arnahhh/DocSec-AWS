@@ -7,6 +7,8 @@ if (!admin.apps.length) {
 
     // ── Option B: inline env vars (production / cloud) ─────────────────────────
     if (process.env.FIREBASE_PROJECT_ID) {
+        console.log("Project ID:", process.env.FIREBASE_PROJECT_ID);
+console.log("Client Email:", process.env.FIREBASE_CLIENT_EMAIL);
         admin.initializeApp({
             credential: admin.credential.cert({
                 projectId: process.env.FIREBASE_PROJECT_ID,

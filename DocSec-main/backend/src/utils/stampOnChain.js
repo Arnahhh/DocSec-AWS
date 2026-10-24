@@ -1,36 +1,71 @@
-// src/utils/stampOnChain.js
-import { JsonRpcProvider, Wallet } from "ethers";
+import { JsonRpcProvider, Wallet, formatEther } from "ethers";
 
-// Initialise once — reuse across requests
-const provider = new JsonRpcProvider(
-    `https://sepolia.infura.io/v3/${process.env.INFURA_PROJECT_ID}`
-);
+const INFURA_ID = process.env.INFURA_PROJECT_ID;
+const PRIVATE_KEY = process.env.WALLET_PRIVATE_KEY;
 
-const wallet = new Wallet(process.env.WALLET_PRIVATE_KEY, provider);
+if (!INFURA_ID) {
+    throw new Error("INFURA_PROJECT_ID is missing from .env");
+}
 
-/**
- * Sends a 0-ETH transaction to Sepolia with the document's SHA-256 hash
- * encoded as calldata. Signed silently by the server wallet — no MetaMask.
- *
- * @param {string} fullHash  64-char hex SHA-256 (no 0x prefix)
- * @returns {Promise<{ txHash: string, etherscan: string }>}
- */
+if (!PRIVATE_KEY) {
+    throw new Error("WALLET_PRIVATE_KEY is missing from .env");
+}
+
+const RPC_URL = `https://sepolia.infura.io/v3/${INFURA_ID}`;
+
+console.log("\n========== DOCCHAIN CONFIG ==========");
+console.log("RPC URL:", RPC_URL);
+console.log("Wallet Key Present:", !!PRIVATE_KEY);
+console.log("=====================================\n");
+
+const provider = new JsonRpcProvider(RPC_URL);
+const wallet = new Wallet(PRIVATE_KEY, provider);
+
 export async function stampOnChain(fullHash) {
-    // Encode "DOCCHAIN:<hash>" as hex calldata
-    const message = `DOCCHAIN:${fullHash}`;
-    const dataHex = "0x" + Buffer.from(message, "utf8").toString("hex");
+    try {
+        console.log("\n========== STAMP REQUEST ==========");
+        console.log("Hash:", fullHash);
 
-    const tx = await wallet.sendTransaction({
-        to:    wallet.address, // send to self — no ETH moves
-        value: 0n,
-        data:  dataHex,
-    });
+        const network = await provider.getNetwork();
+        console.log("Network:", network.name);
+        console.log("Chain ID:", network.chainId.toString());
 
-    // Wait for 1 confirmation before returning
-    await tx.wait(1);
+        const balance = await provider.getBalance(wallet.address);
+        console.log("Wallet:", wallet.address);
+        console.log("Balance:", formatEther(balance), "ETH");
 
-    return {
-        txHash:    tx.hash,
-        etherscan: `https://sepolia.etherscan.io/tx/${tx.hash}`,
-    };
+        if (balance === 0n) {
+            throw new Error(
+                "Wallet has 0 Sepolia ETH. Get test ETH before stamping."
+            );
+        }
+
+        const message = `DOCCHAIN:${fullHash}`;
+        const data = "0x" + Buffer.from(message).toString("hex");
+
+        const tx = await wallet.sendTransaction({
+            to: wallet.address,
+            value: 0n,
+            data,
+        });
+
+        console.log("Transaction Hash:", tx.hash);
+
+        await tx.wait();
+
+        console.log("Transaction Confirmed");
+
+        return {
+            txHash: tx.hash,
+            etherscan: `https://sepolia.etherscan.io/tx/${tx.hash}`,
+        };
+    } catch (err) {
+        console.error("\n========== BLOCKCHAIN ERROR ==========");
+        console.error(err);
+        console.error("Message:", err.message);
+        console.error("Code:", err.code);
+        console.error("======================================");
+
+        throw err;
+    }
 }
